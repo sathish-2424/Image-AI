@@ -31,7 +31,7 @@ A powerful, modern web application that transforms text descriptions into stunni
 
 ## 🚀 Demo
 
-**Live Demo**: [Your-Hosted-URL-Here](#)
+**Live Demo**: [Link](https://sathish-2424.github.io/Image-AI/)
 
 ### Sample Outputs
 - Mountain landscapes at sunset
