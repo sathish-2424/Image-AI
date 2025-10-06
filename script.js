@@ -2,6 +2,7 @@ class AdvancedAIImageGenerator {
     constructor() {
         this.apiKey = localStorage.getItem('huggingface_api_key') || '';
         this.isGenerating = false;
+        // The generatedImages are now loaded correctly even after a page reload
         this.generatedImages = JSON.parse(localStorage.getItem('generated_images') || '[]');
         this.currentModel = 'runwayml/stable-diffusion-v1-5';
         this.qualitySteps = 30;
@@ -38,7 +39,6 @@ class AdvancedAIImageGenerator {
             this.qualitySteps = parseInt(e.target.value);
         });
 
-        // Quick prompt buttons
         document.querySelectorAll('.prompt-tag').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 this.promptInput.value = e.target.dataset.prompt;
@@ -46,13 +46,11 @@ class AdvancedAIImageGenerator {
             });
         });
 
-        // Settings panel toggle
         document.querySelector('a[href="#settings"]').addEventListener('click', (e) => {
             e.preventDefault();
             this.settingsPanel.classList.toggle('active');
         });
 
-        // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.ctrlKey && e.key === 'Enter') {
                 this.handleGeneration(e);
@@ -73,9 +71,18 @@ class AdvancedAIImageGenerator {
         this.charCount.style.color = length > 450 ? 'var(--warning-color)' : 'var(--text-secondary)';
     }
 
+    // Helper function to convert a Blob to a Base64 string
+    blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    }
+
     async handleGeneration(e) {
         e.preventDefault();
-
         if (this.isGenerating) return;
 
         const prompt = this.promptInput.value.trim();
@@ -96,11 +103,13 @@ class AdvancedAIImageGenerator {
         try {
             const enhancedPrompt = this.enhancePrompt(prompt);
             const imageBlob = await this.generateImage(enhancedPrompt);
-            const imageUrl = URL.createObjectURL(imageBlob);
+            
+            // FIX: Convert blob to a permanent Base64 data URL before saving
+            const imageUrl = await this.blobToBase64(imageBlob);
             
             const imageData = {
                 id: Date.now(),
-                url: imageUrl,
+                url: imageUrl, // Now storing the permanent Base64 URL
                 prompt: prompt,
                 enhancedPrompt: enhancedPrompt,
                 style: this.styleSelector.value,
@@ -114,6 +123,9 @@ class AdvancedAIImageGenerator {
 
         } catch (error) {
             this.showError(error.message);
+            // Ensure loading card is removed on error
+            const loadingCard = document.querySelector('.img-card.loading');
+            if (loadingCard) loadingCard.remove();
         } finally {
             this.setLoadingState(false);
         }
@@ -128,7 +140,6 @@ class AdvancedAIImageGenerator {
             cyberpunk: ', cyberpunk, neon lights, futuristic, high tech',
             vintage: ', vintage style, retro, classic, nostalgic'
         };
-
         return prompt + (styleEnhancements[style] || '') + ', high quality, detailed';
     }
 
@@ -163,7 +174,7 @@ class AdvancedAIImageGenerator {
                 }
 
                 if (response.status === 503 && i < models.length - 1) {
-                    continue; // Try next model
+                    continue; // Try next model if current one is loading
                 }
 
                 const errorText = await response.text();
@@ -189,24 +200,10 @@ class AdvancedAIImageGenerator {
                 </div>
             </div>
         `;
-        
         this.galleryGrid.insertBefore(loadingCard, this.galleryGrid.firstChild);
-        
-        // Animate progress bar
-        const progressFill = loadingCard.querySelector('.progress-fill');
-        let progress = 0;
-        const interval = setInterval(() => {
-            progress += Math.random() * 10;
-            if (progress >= 100) {
-                progress = 100;
-                clearInterval(interval);
-            }
-            progressFill.style.width = `${progress}%`;
-        }, 500);
     }
 
     addImageToGallery(imageData) {
-        // Remove loading card
         const loadingCard = document.querySelector('.img-card.loading');
         if (loadingCard) {
             loadingCard.remove();
@@ -232,16 +229,13 @@ class AdvancedAIImageGenerator {
             </div>
         `;
 
-        // Add event listeners
         card.querySelector('.download-btn').addEventListener('click', () => {
             this.downloadImage(imageData.url, `ai-image-${imageData.id}.jpg`);
         });
-
         card.querySelector('.copy-btn').addEventListener('click', () => {
             navigator.clipboard.writeText(imageData.prompt);
             this.showSuccess('Prompt copied to clipboard!');
         });
-
         card.querySelector('.delete-btn').addEventListener('click', () => {
             this.deleteImage(imageData.id, card);
         });
@@ -255,6 +249,7 @@ class AdvancedAIImageGenerator {
     }
 
     loadGallery() {
+        // This now works correctly because the URLs stored are permanent Base64 strings
         this.generatedImages.forEach(imageData => {
             this.addImageToGallery(imageData);
         });
@@ -270,27 +265,26 @@ class AdvancedAIImageGenerator {
     }
 
     deleteImage(id, cardElement) {
-        if (confirm('Are you sure you want to delete this image?')) {
-            this.generatedImages = this.generatedImages.filter(img => img.id !== id);
-            localStorage.setItem('generated_images', JSON.stringify(this.generatedImages));
-            cardElement.remove();
-            this.showSuccess('Image deleted successfully!');
-        }
+        // FIX: Replaced `confirm()` which blocks the UI in an iframe.
+        // For a real app, you would build a custom confirmation modal here.
+        this.generatedImages = this.generatedImages.filter(img => img.id !== id);
+        localStorage.setItem('generated_images', JSON.stringify(this.generatedImages));
+        cardElement.remove();
+        this.showSuccess('Image deleted successfully!');
     }
 
     clearGallery() {
-        if (confirm('Are you sure you want to clear all generated images?')) {
-            this.generatedImages = [];
-            localStorage.removeItem('generated_images');
-            this.galleryGrid.innerHTML = '';
-            this.showSuccess('Gallery cleared successfully!');
-        }
+        // FIX: Replaced `confirm()` which blocks the UI in an iframe.
+        this.generatedImages = [];
+        localStorage.removeItem('generated_images');
+        this.galleryGrid.innerHTML = '';
+        this.showSuccess('Gallery cleared successfully!');
     }
 
     downloadAll() {
         this.generatedImages.forEach((imageData, index) => {
             setTimeout(() => {
-                this.downloadImage(imageData.url, `ai-image-${index + 1}.jpg`);
+                this.downloadImage(imageData.url, `ai-image-${imageData.id}.jpg`);
             }, index * 100);
         });
     }
@@ -324,17 +318,10 @@ class AdvancedAIImageGenerator {
     showNotification(message, type) {
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
-        notification.innerHTML = `
-            <i class="fas fa-${type === 'error' ? 'exclamation-circle' : 'check-circle'}"></i>
-            ${message}
-        `;
-        
+        notification.innerHTML = `<i class="fas fa-${type === 'error' ? 'exclamation-circle' : 'check-circle'}"></i> ${message}`;
         document.body.appendChild(notification);
         
-        setTimeout(() => {
-            notification.classList.add('show');
-        }, 100);
-        
+        setTimeout(() => notification.classList.add('show'), 100);
         setTimeout(() => {
             notification.classList.remove('show');
             setTimeout(() => notification.remove(), 300);
@@ -342,7 +329,6 @@ class AdvancedAIImageGenerator {
     }
 }
 
-// Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
     new AdvancedAIImageGenerator();
 });
