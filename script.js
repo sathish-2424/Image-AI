@@ -4,7 +4,7 @@ class AdvancedAIImageGenerator {
         this.isGenerating = false;
         this.generatedImages = [];
         this.qualitySteps = 30;
-        this.apiUrl = 'http://localhost:5000/api';
+        this.currentModel = 'runwayml/stable-diffusion-v1-5';
         
         this.initializeElements();
         this.bindEvents();
@@ -82,6 +82,15 @@ class AdvancedAIImageGenerator {
         this.charCount.style.color = length > 450 ? 'var(--warning-color)' : 'var(--text-secondary)';
     }
 
+    blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    }
+
     async handleGeneration(e) {
         e.preventDefault();
         if (this.isGenerating) return;
@@ -102,35 +111,15 @@ class AdvancedAIImageGenerator {
         this.createLoadingCard();
 
         try {
-            const response = await fetch(`${this.apiUrl}/generate`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    prompt: prompt,
-                    apiKey: this.apiKey,
-                    style: this.styleSelector.value,
-                    size: this.sizeSelector.value,
-                    qualitySteps: this.qualitySteps
-                })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to generate image');
-            }
-
-            const data = await response.json();
+            const enhancedPrompt = this.enhancePrompt(prompt);
+            const imageBlob = await this.generateImage(enhancedPrompt);
+            const imageUrl = await this.blobToBase64(imageBlob);
             
-            if (!data.success) {
-                throw new Error(data.error || 'Generation failed');
-            }
-
             const imageData = {
-                id: data.id,
-                url: data.image,
+                id: Date.now(),
+                url: imageUrl,
                 prompt: prompt,
+                enhancedPrompt: enhancedPrompt,
                 style: this.styleSelector.value,
                 size: this.sizeSelector.value,
                 timestamp: new Date().toISOString()
@@ -138,13 +127,72 @@ class AdvancedAIImageGenerator {
 
             this.addImageToGallery(imageData);
             this.showSuccess('Image generated successfully!');
+            this.promptInput.value = '';
+            this.updateCharCount();
 
         } catch (error) {
-            this.showError(error.message || 'An error occurred during generation');
+            this.showError(error.message);
             const loadingCard = document.querySelector('.img-card.loading');
             if (loadingCard) loadingCard.remove();
         } finally {
             this.setLoadingState(false);
+        }
+    }
+
+    enhancePrompt(prompt) {
+        const style = this.styleSelector.value;
+        const styleEnhancements = {
+            realistic: ', photorealistic, high detail, professional photography',
+            artistic: ', artistic, painterly, fine art, masterpiece',
+            cartoon: ', cartoon style, animated, colorful, fun',
+            cyberpunk: ', cyberpunk, neon lights, futuristic, high tech',
+            vintage: ', vintage style, retro, classic, nostalgic'
+        };
+        return prompt + (styleEnhancements[style] || '') + ', high quality, detailed';
+    }
+
+    async generateImage(prompt) {
+        const models = [
+            'runwayml/stable-diffusion-v1-5',
+            'stabilityai/stable-diffusion-xl-base-1.0',
+            'CompVis/stable-diffusion-v1-4'
+        ];
+
+        for (let i = 0; i < models.length; i++) {
+            try {
+                const response = await fetch(`https://api-inference.huggingface.co/models/${models[i]}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.apiKey}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        inputs: prompt,
+                        parameters: {
+                            num_inference_steps: this.qualitySteps,
+                            guidance_scale: 7.5,
+                            width: parseInt(this.sizeSelector.value.split('x')[0]),
+                            height: parseInt(this.sizeSelector.value.split('x')[1])
+                        }
+                    }),
+                });
+
+                if (response.ok) {
+                    return await response.blob();
+                }
+
+                if (response.status === 503 && i < models.length - 1) {
+                    continue;
+                }
+
+                const errorText = await response.text();
+                throw new Error(`API Error (${models[i]}): ${response.status} - ${errorText}`);
+
+            } catch (error) {
+                if (i === models.length - 1) {
+                    throw error;
+                }
+            }
         }
     }
 
@@ -258,42 +306,19 @@ class AdvancedAIImageGenerator {
         this.showSuccess(`Downloading ${this.generatedImages.length} images...`);
     }
 
-    async saveApiKey() {
+    saveApiKey() {
         const key = this.apiKeyInput.value.trim();
         if (!key) {
             this.showError('Please enter a valid API key!');
             return;
         }
-
-        this.saveKeyBtn.disabled = true;
-        this.saveKeyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Validating...';
-
-        try {
-            const response = await fetch(`${this.apiUrl}/validate-key`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ apiKey: key })
-            });
-
-            const data = await response.json();
-            
-            if (data.valid) {
-                this.apiKey = key;
-                this.apiKeyInput.value = ''; // Clear input for security
-                this.showSuccess('✓ API key saved successfully!');
-                setTimeout(() => {
-                    this.settingsPanel.classList.remove('active');
-                }, 500);
-            } else {
-                this.showError('✗ Invalid API key: ' + (data.error || 'Unknown error'));
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            this.showError('Error validating API key: ' + error.message);
-        } finally {
-            this.saveKeyBtn.disabled = false;
-            this.saveKeyBtn.innerHTML = 'Save';
-        }
+        
+        this.apiKey = key;
+        this.apiKeyInput.value = '';
+        this.showSuccess('✓ API key saved successfully!');
+        setTimeout(() => {
+            this.settingsPanel.classList.remove('active');
+        }, 500);
     }
 
     setLoadingState(isLoading) {

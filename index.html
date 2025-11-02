@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Image Generator</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <header class="navbar">
@@ -39,9 +39,9 @@
                     </select>
                     
                     <select class="size-selector">
-                        <option value="512x512">Square (512x512)</option>
-                        <option value="768x512">Landscape (768x512)</option>
-                        <option value="512x768">Portrait (512x768)</option>
+                        <option value="1080x1920">Portrait (1080x1920)</option>
+                        <option value="1920x1080">Landscape (1920x1080)</option>
+                        <option value="2560x1440">4K (2560x1440)</option>
                     </select>
                     
                     <button class="generate-btn" type="submit">
@@ -99,6 +99,7 @@
             </div>
         </div>
     </div>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+
+    <script src="script.js"></script>
 </body>
 </html>
